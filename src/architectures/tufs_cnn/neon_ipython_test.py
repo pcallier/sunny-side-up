@@ -29,27 +29,6 @@ amazon.num_entries_max = 10000
 
 be = gen_backend(backend="gpu",batch_size=batch_size,rng_seed=888)
 
-def amazon_to_dataiterator(am):
-    amazon_train = list(am)
-    amazon_in, amazon_out = zip(*amazon_train)
-    #print amazon_in[0].shape
-    amazon_in_2 = np.array(amazon_in).reshape(len(amazon_in), -1)
-    amazon_out_2 = np.ndarray((len(amazon_out), 2))
-    amazon_out_2[:, :] = amazon_out
-    #print amazon_in_2.shape
-    #print amazon_out_2.shape
-    data_it = DataIterator(amazon_in_2, amazon_out_2, 
-                           lshape=(1, text_length, vocab_size),
-                           make_onehot=False)
-    return data_it
-
-
-#amazon_gen_train = amazon.load_character_encoded_data("/root/data/amazon/aggressive_dedup.json", record_limit=amazon.num_entries_max)
-#amazon_train = amazon_to_dataiterator(amazon_gen_train)
-#amazon_gen_test = amazon.load_character_encoded_data("/root/data/amazon/aggressive_dedup.json",
-#                                                    which_set="test", record_limit=amazon.num_entries_max)
-#amazon_test = amazon_to_dataiterator(amazon_gen_test)
-
 am_train = "/root/data/amazon/reviews_Sports_and_Outdoors.json.gz"
 am_test = "/root/data/amazon/reviews_Health_and_Personal_Care.json.gz"
 h5file_train_path = '/root/data/pcallier/amazon/temp_train.hd5'
