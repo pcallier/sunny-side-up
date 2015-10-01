@@ -20,12 +20,16 @@ import h5py
 import simplejson as json
 import gzip
 from neon import NervanaObject
+import text_utils
 
 # parameters: data modeling
 # path_to_amazon = '/mnt/data/AmazonReviews/aggressive_dedup.json.gz'
 # total_records = 82836502
 # path_to_amazon = '/mnt/data/AmazonReviews/reviews_Health_and_Personal_Care.json.gz'
 # total_records =  2982356
+
+# TODO: figure out how to handle length restrictions in the character and word cases,
+# and do so in a way that only checks the length of the record once (if that's what should be done)
 
 
 def text_to_uint8(text_string):
@@ -48,24 +52,38 @@ def uint8_to_text(uary):
     uary[uary > 32] = -uary[uary > 32] - 95
     uary[uary < 34] = uary[uary < 34] + 32
     return str(bytearray(uary))
+    #return str(uary)
 
 
 class AmazonBatchWriter(object):
-    def __init__(self, data_path, out_file, min_length=100, max_length=1014):
+    def __init__(self, data_path, out_file, min_length=100, max_length=1014, encode_words=False):
         self.data_path = data_path
         self.min_length = min_length
         self.max_length = max_length
         self.record_dim = max_length + 1
         self.ndata = 0
         self.ofile = h5py.File(out_file, "w")
+
+        self.encode_words = encode_words
+        if self.encode_words==True:
+            encoding_dtype = np.uint16
+            # pick an arbitrary value for max # of tokens
+            self.tokens_max = self.max_length / 10
+        else:
+            encoding_dtype = np.uint8
+            self.tokens_max = self.max_length
         self.output = self.ofile.create_dataset(name="reviews",
                                                 shape=(2**20, self.record_dim),
                                                 maxshape=(None, self.record_dim),
-                                                dtype=np.uint8,
+                                                dtype=encoding_dtype,
                                                 chunks=(2048, self.record_dim))
         self.cache_size = 2048*16
-        self.rbuf = np.empty((self.cache_size, self.max_length), dtype=np.uint8)
-        self.lbuf = np.empty((self.cache_size,), dtype=np.uint8)
+        self.rbuf = np.empty((self.cache_size, self.tokens_max), dtype=encoding_dtype)
+        self.lbuf = np.empty((self.cache_size,), dtype=encoding_dtype)
+        
+
+            
+
 
     def __del__(self):
         # Write out the remainder
@@ -84,7 +102,17 @@ class AmazonBatchWriter(object):
         review_text = review.lower()[:self.max_length].ljust(self.max_length)
         return review_text, overall
 
+    def enforce_length(self, x):
+        x = x[:self.tokens_max]
+        if len(x) < self.tokens_max:
+            x = np.concatenate(np.zeros((self.tokens_max - len(x),)), x)
+        return x
+    
     def run(self):
+        if self.encode_words == True:
+            normer = text_utils.AmazonNormalizer()
+            # TODO: make this relative
+            normer.from_disk("/root/data/pcallier/sunny-side-up/src/datasets/amazon_5k.pkl")
         with gzip.open(self.data_path, "r") as f:
             for line in f:
                 parsed_record = self.parse_review(line)
@@ -92,7 +120,12 @@ class AmazonBatchWriter(object):
                     continue
                 else:
                     idx = self.ndata % self.cache_size
-                    self.rbuf[idx] = bytearray(parsed_record[0])
+                    if self.encode_words == True:
+                        self.rbuf[idx] = normer.to_idx(normer.tokenize(
+                                normer.normalize(
+                                parsed_record[0])))
+                    else:
+                        self.rbuf[idx] = bytearray(parsed_record[0])
                     self.lbuf[idx] = parsed_record[1]
                     self.ndata += 1
                     if (self.ndata % self.cache_size) == 0:

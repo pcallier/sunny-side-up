@@ -8,6 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+import numpy as np
+
 class AmazonNormalizer:
     """
     This class holds a few utility functions for loading and manipulating
@@ -106,8 +108,8 @@ class AmazonNormalizer:
         i = 0
         with gzip.open(self.reviews_path) as f:
             for line in f:
-                tokenized_review = tokenize_amazon(
-                                    normalize_amazon(
+                tokenized_review = self.tokenize(
+                                    self.normalize(
                                     self.review_text(line)))
                 
                 self.text.extend(tokenized_review)
@@ -115,19 +117,46 @@ class AmazonNormalizer:
                 if i % 10000 == 0:
                     logger.info("Record {}...".format(i))
                     
+    def iter_reviews(self):
+        with gzip.open(self.reviews_path) as f:
+            for line in f:
+                tokenized_review = self.tokenize(
+                                    self.normalize(
+                                    self.review_text(line)))
+                yield tokenized_review
     
-    def count_words(self):
+    def count_words(self, in_memory=False):
         """
-        Count tokens in self.text
+        Count tokens in self.text, optionally loading 
+        tokens into self.text from file at self.reviews_path
+        
+        Arguments
+            in_memory (bool): load corpus into memory first? Faster
+                but more memory-intensive
         
         Side effect
             self.counts is a Counter (dict-like) whose keys
             are the unique tokens found in self.text and 
             whose values are the number of times each token occurs.
         """
-        if self.text == []:
-            self.load_reviews()
-        self.counts = Counter(self.text)
+        if in_memory == False:
+            # iterate over reviews and count in batches
+            buffer = []
+            count = 0
+            for review in self.iter_reviews():
+                buffer.extend(review)
+                if len(buffer) > 1000000:
+                    present_counts = Counter(buffer)
+                    self.counts += present_counts
+                    count += np.sum(present_counts.values())
+                    buffer = []
+                    logger.info("Total tokens: {}".format(count))
+            # mop up leftovers when loop exits
+            self.counts += Counter(buffer)
+        else:
+            if self.text == []:
+                self.load_reviews()
+            self.counts = Counter(self.text)
     
     def make_dictionaries(self,vocab_size=5000, exclude_top=25):
         """
@@ -154,10 +183,35 @@ class AmazonNormalizer:
         vocab_size = len(self.idx_to_word)
         self.onehot_lookup = np.concatenate((np.zeros((vocab_size, 1)), np.identity(vocab_size)), axis=1)
 
+    def to_idx(self, txt):
+        """
+        Converts plain text, tokenized or not, to list of indices. 
+        make_dictionaries or from_disk must be run before this.
+        
+        Arguments
+            txt (list or string): if list, should be list of tokens; if string,
+                will be tokenized before proceeding
+                
+        Returns
+            (numpy.ndarray, 1-D): a list of values from the word_to_idx
+            dictionary, corresponding of the tokens in txt,  according to the parameters 
+            given to make_dictionaries. Out-of-vocabulary tokens are represented
+            as 0.
+        """
+        # tokenize if necessary (but does not normalize, beware)
+        if type(txt) != list:
+            txt = self.tokenize(txt)
+
+        keep_words = self.word_to_idx.keys()
+        vocab_size = len(keep_words)
+        indices = [ self.word_to_idx[w] if w in keep_words else 0 for w in txt ]
+        return indices
+       
+        
     def to_onehot_word(self,txt):
         """
         Converts plain text, tokenized or not, to one-hot (by word)
-        encoding. make_dictionaries must be run before this.
+        encoding. make_dictionaries or from_disk must be run before this.
         
         Arguments
             txt (list or string): if list, should be list of tokens; if string,
@@ -169,20 +223,13 @@ class AmazonNormalizer:
             given to make_dictionaries. Out-of-vocabulary tokens are represented
             as all-zero vectors.
         """
-        # tokenize if necessary (but does not normalize, beware)
-        if type(txt) != list:
-            txt = self.tokenize(txt)
-
-        keep_words = self.word_to_idx.keys()
-        vocab_size = len(keep_words)
-        indices = [ self.word_to_idx[w] if w in keep_words else 0 for w in txt ]
-
+        indices = self.to_idx(txt)
         return onehot_lookup[:,indices]
 
     def to_text(self,onehot_word):
         """
         Converts a one-hot encoding into a list of plain-text
-        tokens. make_dictionaries must be run before using this function.
+        tokens. make_dictionaries or from_disk must be run before using this function.
         
         Arguments
             onehot_word (numpy.adarray, 2-D): one-hot encoding of 
@@ -200,14 +247,14 @@ class AmazonNormalizer:
 
 if __name__=="__main__":
     # Usage demo:
-    a = DocumentNormalizer()
-    a.load_reviews()
+    a = AmazonNormalizer()
+    #a.load_reviews()
     a.count_words()
     a.make_dictionaries(vocab_size=10000, exclude_top=0)
     # demo serialization
     a.to_disk("/data/amazon/amazon_normalizer.pkl")
     a = None
-    a = DocumentNormalizer()
+    a = AmazonNormalizer()
     a.from_disk("/data/amazon/amazon_normalizer.pkl")
     # tokenization, normalization, and one-hot encoding
     test_str ="dkjasdlkajsdlk hahah I am a product of quality."

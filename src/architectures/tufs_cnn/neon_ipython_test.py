@@ -33,8 +33,8 @@ am_train = "/root/data/amazon/reviews_Sports_and_Outdoors.json.gz"
 am_test = "/root/data/amazon/reviews_Health_and_Personal_Care.json.gz"
 h5file_train_path = '/root/data/pcallier/amazon/temp_train.hd5'
 h5file_test_path = '/root/data/pcallier/amazon/temp_test.hd5'
-azbw_train = amazon_neon.AmazonBatchWriter(am_train ,h5file_train_path)
-azbw_test = amazon_neon.AmazonBatchWriter(am_test ,h5file_test_path)
+azbw_train = amazon_neon.AmazonBatchWriter(am_train, h5file_train_path)
+azbw_test = amazon_neon.AmazonBatchWriter(am_test, h5file_test_path)
 
 amazon_train = amazon_neon.AmazonDataIterator(h5file_train_path)
 amazon_test = amazon_neon.AmazonDataIterator(h5file_test_path)
