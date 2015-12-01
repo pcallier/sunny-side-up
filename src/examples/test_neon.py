@@ -66,7 +66,6 @@ def lstm_model(hidden_size=200, noutput=2):
     layers = [
         neon.layers.LSTM(hidden_size,
                          init=neon.initializers.GlorotUniform(),
-                         bias=neon.initializers.Constant(1),
                          activation=neon.transforms.Tanh(),
                          gate_activation=neon.transforms.Logistic()),
         neon.layers.Dropout(0.5),
@@ -363,7 +362,7 @@ def main():
     arg_parser.add_argument("--results_dir", "-r", default=None, help="custom subfolder to store results and weights in (defaults to dataset)")
     arg_parser.add_argument("--data_path", "-d", default=None, help="custom path to original data, partially overrides working_dir")
     model_types=arg_parser.add_mutually_exclusive_group()
-    model_types.add_argument("--cnn", default=True, action="store_true", help="Use convolutional model")
+    model_types.add_argument("--cnn", action="store_true", help="Use convolutional model")
     model_types.add_argument("--lstm", action="store_true", help="Use LSTM")
     arg_parser.add_argument("--hdf5_path", "-5", default=None, help="custom path to split data in HDF5")
     arg_parser.add_argument("--weights_path", default=None, help="path to weights to initialize model with")
